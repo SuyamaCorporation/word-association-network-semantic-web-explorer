@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>単語連想ネットワーク・意味ウェブエクスプローラー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+<div class="max-w-4xl mx-auto p-4">
+  <h1 class="text-2xl font-bold text-center text-cyan-300 mb-1">単語連想ネットワーク</h1>
+  <p class="text-center text-gray-500 mb-4 text-sm">中心単語から連想語を展開・意味ウェブを探索</p>
+
+  <!-- Input -->
+  <div class="flex gap-2 mb-4">
+    <input type="text" id="center-word" placeholder="中心単語を入力（例：海、時間、光）" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none" aria-label="中心単語">
+    <button onclick="explore()" class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-semibold" aria-label="探索する">探索</button>
+    <button onclick="clearGraph()" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm" aria-label="クリア">🗑️</button>
+  </div>
+
+  <!-- Quick seeds -->
+  <div class="flex flex-wrap gap-1 mb-4">
+    <span class="text-xs text-gray-500 py-1">クイック:</span>
+    <button onclick="quickExplore('海')" class="px-2 py-1 bg-blue-900/50 text-blue-300 text-xs rounded hover:bg-blue-800/50">海</button>
+    <button onclick="quickExplore('時間')" class="px-2 py-1 bg-purple-900/50 text-purple-300 text-xs rounded hover:bg-purple-800/50">時間</button>
+    <button onclick="quickExplore('光')" class="px-2 py-1 bg-yellow-900/50 text-yellow-300 text-xs rounded hover:bg-yellow-800/50">光</button>
+    <button onclick="quickExplore('家')" class="px-2 py-1 bg-green-900/50 text-green-300 text-xs rounded hover:bg-green-800/50">家</button>
+    <button onclick="quickExplore('記憶')" class="px-2 py-1 bg-pink-900/50 text-pink-300 text-xs rounded hover:bg-pink-800/50">記憶</button>
+    <button onclick="quickExplore('自由')" class="px-2 py-1 bg-orange-900/50 text-orange-300 text-xs rounded hover:bg-orange-800/50">自由</button>
+  </div>
+
+  <!-- Canvas -->
+  <div class="bg-gray-900 rounded-xl p-2 mb-4 relative">
+    <canvas id="network-canvas" width="700" height="400" class="w-full rounded-lg"></canvas>
+    <div class="absolute top-2 right-2 text-xs text-gray-600">クリック: 展開 / ドラッグ: 移動</div>
+  </div>
+
+  <!-- Path display -->
+  <div id="path-display" class="bg-gray-900 rounded-xl p-3 text-sm text-gray-400 hidden">
+    連想パス: <span id="path-text" class="text-cyan-300"></span>
+  </div>
+
+<script>
+const assocDB = {
+  '海': ['波','砂浜','魚','塩','深海','船','空','青','珊瑚','嵐'],
+  '波': ['海','砂浜','音','白','泡','岩','サーフィン','揺れ','リズム'],
+  '砂浜': ['海','貝殻','夕日','子供','足跡','砂Castle'],
+  '魚': ['海','川','釣り','食べ物','群れ','泳ぐ','水'],
+  '時間': ['過去','未来','現在','記憶','老い','砂時計','時計','流れ','永遠'],
+  '過去': ['記憶','時間','懐かしさ','写真','子供','変化'],
+  '未来': ['希望','夢','不安','時間','変化','テクノロジー'],
+  '記憶': ['過去','時間','写真','懐かしさ','忘却','夢','匂い'],
+  '光': ['影','太陽','星','闇','温かさ','希望','速度','目'],
+  '影': ['光','闇','形','恐れ','秘密','冷たさ'],
+  '太陽': ['光','熱','宇宙','空','エネルギー','生命','昼'],
+  '星': ['夜','宇宙','光','夢','孤独','銀河','願い'],
+  '家': ['家族','温かさ','安心','帰る','部屋','屋根','記憶'],
+  '家族': ['家','愛','絆','子供','親','記憶','温かさ'],
+  '愛': ['家族','心','絆','痛み','喜び','花','赤'],
+  '自由': ['空','翼','解放','束縛','旅','孤独','風'],
+  '空': ['雲','星','光','飛行機','自由','青','広さ'],
+  '風': ['自由','葉','音','秋','吹く','空','流れ'],
+  '夢': ['眠り','未来','希望','星','記憶','幻想','子供'],
+  '眠り': ['夢','休息','闇','夜','静寂','疲れ'],
+  '夜': ['星','月','闇','眠り','静寂','猫','街灯'],
+  '月': ['夜','星','光','満ち欠け','海','兎','白'],
+  '花': ['春','美しさ','香り','愛','散る','桜','赤'],
+  '春': ['花','温かさ','新しい','卒業','希望','緑'],
+  '水': ['魚','海','川','流れ','生命','透明','涼しさ'],
+  '川': ['水','魚','流れ','石','橋','音','旅'],
+  '旅': ['自由','出発','冒険','地図','孤独','記憶','風'],
+  '宇宙': ['星','無限','孤独','謎','宇宙人','宇宙船','科学'],
+  '音': ['音楽','言葉','耳','沈黙','波','風','心'],
+  '音楽': ['音','感情','踊り','歌','リズム','楽器'],
+  '心': ['愛','感情','音','体','精神','内側'],
+  '緑': ['森','自然','安らぎ','春','植物','環境'],
+  '森': ['緑','木','静寂','動物','迷子','空気'],
+  '食べ物': ['魚','喜び','家族','文化','料理','味'],
+  '子供': ['遊び','未来','夢','家族','笑顔','成長'],
+  '希望': ['未来','光','夢','愛','星','春'],
+};
+
+let nodes = [];
+let edges = [];
+let dragging = null;
+let dragOffset = {x:0, y:0};
+const canvas = document.getElementById('network-canvas');
+
+function getAssociations(word) {
+  if (assocDB[word]) return assocDB[word];
+  // Generate fallback associations
+  const chars = word.split('');
+  const fallback = [];
+  if (word.length >= 2) {
+    Object.keys(assocDB).forEach(k => {
+      if (assocDB[k].includes(word)) fallback.push(k);
+    });
+  }
+  return fallback.length > 0 ? fallback.slice(0,8) : ['こと','もの','様子','状態','感情','変化','記憶','時間'];
+}
+
+function quickExplore(word) {
+  document.getElementById('center-word').value = word;
+  explore();
+}
+
+function explore() {
+  const word = document.getElementById('center-word').value.trim();
+  if (!word) return;
+
+  // Check if already exists
+  const existing = nodes.find(n => n.word === word);
+  if (existing) {
+    // Expand from existing node
+    expandNode(existing);
+    return;
+  }
+
+  if (nodes.length === 0) {
+    // Start fresh
+    const W = canvas.width, H = canvas.height;
+    nodes = [{ id: 0, word, x: W/2, y: H/2, level: 0, color: '#67e8f9' }];
+    edges = [];
+  }
+
+  const parent = nodes.find(n => n.word === word) || nodes[0];
+  expandNode(parent);
+}
+
+function expandNode(parent) {
+  const assocs = getAssociations(parent.word);
+  const angleStep = (2 * Math.PI) / assocs.length;
+  const radius = 120;
+  assocs.forEach((w, i) => {
+    if (nodes.find(n => n.word === w)) {
+      // Add edge only
+      if (!edges.find(e => (e.from === parent.id && e.to === nodes.find(n=>n.word===w).id) || (e.to === parent.id && e.from === nodes.find(n=>n.word===w).id))) {
+        edges.push({ from: parent.id, to: nodes.find(n=>n.word===w).id });
+      }
+      return;
+    }
+    const angle = i * angleStep + (parent.level * 0.5);
+    const dist = radius + Math.random() * 40;
+    const id = nodes.length;
+    const colors = ['#a78bfa','#34d399','#fbbf24','#f97316','#ec4899','#38bdf8'];
+    nodes.push({
+      id, word: w,
+      x: parent.x + dist * Math.cos(angle),
+      y: parent.y + dist * Math.sin(angle),
+      level: parent.level + 1,
+      color: colors[parent.level % colors.length],
+    });
+    edges.push({ from: parent.id, to: id });
+  });
+  drawGraph();
+  document.getElementById('path-display').classList.remove('hidden');
+  document.getElementById('path-text').textContent = parent.word + ' → ' + assocs.slice(0,5).join(', ') + '...';
+}
+
+function drawGraph() {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#030712'; ctx.fillRect(0,0,W,H);
+
+  // Clamp nodes to canvas
+  nodes.forEach(n => {
+    n.x = Math.max(50, Math.min(W-50, n.x));
+    n.y = Math.max(20, Math.min(H-20, n.y));
+  });
+
+  // Draw edges
+  edges.forEach(e => {
+    const a = nodes.find(n => n.id === e.from);
+    const b = nodes.find(n => n.id === e.to);
+    if (!a || !b) return;
+    ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  });
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const r = n.level === 0 ? 28 : 18 - n.level * 2;
+    const radius = Math.max(14, r);
+    ctx.fillStyle = n.level === 0 ? '#0e7490' : '#111827';
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = n.level === 0 ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.arc(n.x, n.y, radius, 0, 2*Math.PI);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = n.color;
+    ctx.font = `${n.level===0?13:11}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(n.word, n.x, n.y);
+  });
+}
+
+function clearGraph() {
+  nodes = []; edges = [];
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  ctx.fillStyle = '#030712'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  document.getElementById('path-display').classList.add('hidden');
+}
+
+// Click to expand
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const hit = nodes.find(n => Math.hypot(n.x-mx, n.y-my) < 25);
+  if (hit) {
+    document.getElementById('center-word').value = hit.word;
+    expandNode(hit);
+  }
+});
+
+// Drag nodes
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  dragging = nodes.find(n => Math.hypot(n.x-mx, n.y-my) < 25);
+  if (dragging) { dragOffset = {x: dragging.x-mx, y: dragging.y-my}; }
+});
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  dragging.x = (e.clientX - rect.left) * scaleX + dragOffset.x;
+  dragging.y = (e.clientY - rect.top) * scaleY + dragOffset.y;
+  drawGraph();
+});
+canvas.addEventListener('mouseup', () => { dragging = null; });
+
+// Init
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = '#030712'; ctx.fillRect(0,0,canvas.width,canvas.height);
+ctx.fillStyle = '#374151'; ctx.font = '14px sans-serif'; ctx.textAlign='center';
+ctx.fillText('単語を入力して「探索」を押してください', canvas.width/2, canvas.height/2);
+</script>
+</body>
+</html>
